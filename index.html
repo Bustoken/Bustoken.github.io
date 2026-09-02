@@ -235,7 +235,8 @@
                 new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: item.history.map((_, i) => i + 1),
+                        // 수정 포인트 1: item.dates 가 존재하면 실제 날짜 사용
+                        labels: item.dates || item.history.map((_, i) => i + 1),
                         datasets: [{ data: item.history, borderColor: isPositive ? '#f43f5e' : '#38bdf8', borderWidth: 2, pointRadius: 0, fill: false }]
                     },
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
@@ -270,7 +271,8 @@
             modalChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: item.history.map((_, i) => `${i + 1}일전`),
+                    // 수정 포인트 2: item.dates 가 존재하면 실제 날짜(MM/DD)를 차트 x축 라벨로 설정
+                    labels: item.dates || item.history.map((_, i) => `${i + 1}일전`),
                     datasets: [{
                         label: '종가',
                         data: item.history,
