@@ -73,9 +73,15 @@
 
         <!-- 우측 메인 영역 -->
         <main class="flex-1 min-w-0">
-            <div class="mb-5">
-                <h3 class="text-xl font-bold text-white tracking-tight">테마별 ETF 포트폴리오</h3>
-                <p class="text-xs text-slate-400 mt-1">실시간 수집된 국내외 주요 테마 ETF의 수익률 및 차트 현황입니다.</p>
+            <div class="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h3 class="text-xl font-bold text-white tracking-tight">테마별 ETF 포트폴리오</h3>
+                    <p class="text-xs text-slate-400 mt-1">실시간 수집된 국내외 주요 테마 ETF의 수익률 및 차트 현황입니다.</p>
+                </div>
+                <!-- CSV 다운로드 버튼 추가 -->
+                <button onclick="downloadAllCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shrink-0 border border-emerald-500/40">
+                    <i data-lucide="download" class="w-4 h-4"></i> 전체 데이터 CSV 다운로드
+                </button>
             </div>
 
             <!-- 테마 필터 탭 -->
@@ -146,9 +152,15 @@
                 </div>
 
                 <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-700/40">
-                    <h4 class="text-xs font-bold text-slate-300 mb-3 flex items-center gap-1.5">
-                        <i data-lucide="trending-up" class="w-4 h-4 text-slate-400"></i> 최근 30일 가격 추이
-                    </h4>
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-slate-400"></i> 최근 30일 가격 추이
+                        </h4>
+                        <!-- 개별 종목 CSV 다운로드 버튼 -->
+                        <button id="modal-csv-btn" class="text-[11px] text-emerald-400 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition">
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 시세 CSV 받기
+                        </button>
+                    </div>
                     <div class="h-48 w-full">
                         <canvas id="modal-chart"></canvas>
                     </div>
@@ -170,6 +182,7 @@
     <script>
         let etfData = {};
         let modalChartInstance = null;
+        let currentModalTicker = null;
 
         function refreshIcons() { lucide.createIcons(); }
 
@@ -235,7 +248,6 @@
                 new Chart(ctx, {
                     type: 'line',
                     data: {
-                        // 수정 포인트 1: item.dates 가 존재하면 실제 날짜 사용
                         labels: item.dates || item.history.map((_, i) => i + 1),
                         datasets: [{ data: item.history, borderColor: isPositive ? '#f43f5e' : '#38bdf8', borderWidth: 2, pointRadius: 0, fill: false }]
                     },
@@ -248,6 +260,7 @@
 
         function openModal(id) {
             const item = etfData[id];
+            currentModalTicker = id;
             const isPositive = item.m1_return >= 0;
 
             document.getElementById('modal-title').innerText = item.name;
@@ -266,13 +279,15 @@
             const mText = `[${item.market}] ${item.name} (${item.ticker})\n현재가: ${item.price} | 1개월 수익률: ${isPositive ? '+' : ''}${item.m1_return}%\n주요 테마: ${item.theme}\n📌 상세 대시보드 확인: Bustoken.github.io`;
             document.getElementById('modal-marketing-text').innerText = mText;
 
+            // 모달 CSV 버튼 이벤트 연결
+            document.getElementById('modal-csv-btn').onclick = () => downloadSingleCSV(id);
+
             if (modalChartInstance) modalChartInstance.destroy();
             const ctx = document.getElementById('modal-chart').getContext('2d');
             modalChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    // 수정 포인트 2: item.dates 가 존재하면 실제 날짜(MM/DD)를 차트 x축 라벨로 설정
-                    labels: item.dates || item.history.map((_, i) => `${i + 1}일전`),
+                    labels: item.dates || item.history.map((_, i) => `${i + 1}일`),
                     datasets: [{
                         label: '종가',
                         data: item.history,
@@ -312,6 +327,55 @@
             const text = document.getElementById("modal-marketing-text").innerText;
             navigator.clipboard.writeText(text);
             alert("해당 종목 마케팅 문구가 복사되었습니다!");
+        }
+
+        // ================= CSV 다운로드 로직 =================
+        function downloadCSV(csvContent, filename) {
+            // 한글 깨짐 방지를 위한 UTF-8 BOM 추가 (\uFEFF)
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 1. 전체 ETF 요약 데이터 CSV 다운로드
+        function downloadAllCSV() {
+            if (!etfData || Object.keys(etfData).length === 0) {
+                alert("다운로드할 데이터가 없습니다.");
+                return;
+            }
+
+            let csv = "티커,종목명,테마,시장,현재가,1개월수익률(%)\n";
+
+            Object.keys(etfData).forEach(ticker => {
+                const item = etfData[ticker];
+                const cleanName = `"${item.name.replace(/"/g, '""')}"`;
+                const cleanPrice = `"${item.price}"`;
+                csv += `${item.ticker},${cleanName},${item.theme},${item.market},${cleanPrice},${item.m1_return}\n`;
+            });
+
+            const today = new Date().toISOString().slice(0,10);
+            downloadCSV(csv, `ETF_Portfolio_Summary_${today}.csv`);
+        }
+
+        // 2. 단일 종목 30일 가격 추이 CSV 다운로드
+        function downloadSingleCSV(ticker) {
+            const item = etfData[ticker];
+            if (!item) return;
+
+            let csv = "날짜,종가\n";
+            const dates = item.dates || item.history.map((_, i) => `${i + 1}일전`);
+
+            item.history.forEach((price, idx) => {
+                csv += `${dates[idx]},${price}\n`;
+            });
+
+            downloadCSV(csv, `${item.name}_${item.ticker}_price_history.csv`);
         }
 
         refreshIcons();
